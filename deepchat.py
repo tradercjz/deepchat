@@ -13,27 +13,39 @@ from logger import ThreadSafeLogger
 load_dotenv()
 
 @llm.prompt()
-def summarize(conversation: List[str]) -> str:
+def summarize(conversation: List[dict]) -> str:
     """
-    根据下面的对话历史，从对话中，分析出所讨论的所有问题和解决方案。
-    注意，不要自己编造解决方案，可以从对话中分析出来是不是有人解答了这个问题。
+    你是一个专业的对话分析师，你需要根据下面的对话历史，分析出所讨论的所有问题、以及针对每个问题的详细讨论过程和最终解决方案。
+    在分析时，你需要关注对话的上下文和细节，一个问题可能会在多个部分被提及和讨论，并且期间可能穿插其他问题的讨论，你需要把同一个问题的所有相关讨论内容都汇总起来。
+    如果问题是同一个，但是有不同的人提出了相似问题，也算同一个问题。
+    你需要准确地识别出每个问题的提出者、详细的讨论过程、以及最终是否得到解决，以及是谁提供的解决方案。
+    当无法从上下文中找到问题的明确解决方案时，请将解决方案标记为“未解决”。
 
-    {%for conv in conversation %}
-     {content: {{conv.content}}, sender: {{conv.sender}}, member_name: {{conv.member_name}}, msgtime: {{conv.msgtime}}}
+    下面是对话历史：
+    {% for conv in conversation %}
+      {{ loop.index }}. {{ conv.msgtime }} - {{ conv.member_name }}({{ conv.sender }}): {{ conv.content }}
     {% endfor %}
 
-    需要提供如下格式的输出:
+    你需要提供如下格式的输出，要求输出严格按照该格式，不要有任何改动：
     [{
-        "Q": "问题1",
-        "A": "对应的解决办法1",
-        "T": "对应的时间",
-        "U": "对应的解答人"
-        "
-    },{
-        "Q": "问题2",
-        "A": "对应的解决办法2",
-        "T": "对应的时间",
-        "U": "对应的解答人"
+        "category": "问题分类1", 
+        "questions": [{
+            "Q": "具体的问题内容1",
+            "asker": "问题的提出者",
+            "discussion": ["关于问题1的讨论内容1","关于问题1的讨论内容2"...],
+            "A": "对应的解决办法1 或 未解决",
+            "solver": "解答人，如果没有解决写未解决",
+            "T": ["问题出现的的时间1","问题出现的的时间2"...],
+            
+        },
+       {
+            "Q": "具体的问题内容2",
+            "asker": "问题的提出者",
+            "discussion": ["关于问题2的讨论内容1","关于问题2的讨论内容2"...],
+            "A": "对应的解决办法2 或 未解决",
+            "solver": "解答人，如果没有解决写未解决",
+            "T": ["问题出现的的时间1","问题出现的的时间2"...],
+        }]
     }
     ]
 
@@ -41,7 +53,7 @@ def summarize(conversation: List[str]) -> str:
     输出的时候，不要有 json包裹，直接从 [{开始输出。输出}]之后，就结束，后续不要任何输出。
     
     """
-    return {"conversation": conversation}
+    return {"conversation": conversation, "max_tokens": 4096}
 
 
 def process_group_data(group_df: pd.DataFrame) -> Any:
@@ -59,7 +71,7 @@ def process_group_data(group_df: pd.DataFrame) -> Any:
     json_str = group_df.to_json(orient='records', indent=4, force_ascii=False)
 
     try:
-        json_obj = json.loads(json_str)
+        json_obj = json.loads(json_str)  # type: ignore
         result = summarize(json_obj)
 
         logger.info(result)
